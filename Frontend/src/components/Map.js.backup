@@ -1,0 +1,1300 @@
+import React, { useState, useEffect, useRef } from "react";
+import "leaflet/dist/leaflet.css";
+import { MapContainer, TileLayer, useMap, Polygon, useMapEvents, GeoJSON } from "react-leaflet";
+import axios from "axios";
+import Papa from "papaparse";
+import { saveAs } from "file-saver";
+import HamburgerMenu from "./HamburgerMenu";
+import RightHamburgerMenu from "./RightHamburgerMenu";
+import Head from "next/head";
+import wkx from 'wkx';
+
+const maincenter = [35.67843, 139.764603];
+
+//csv書き出し
+export const downloadCsv = (data) => {
+  try {
+    // csvのセルに直接反映される。ここでAPIを呼び出す必要性がある。
+    const rows = [
+      ["不動産", "住所", "座標"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ["0123456789-012", "東京都千代田区大手町", "N50 E50"],
+      ...data,
+    ];
+    // rowsからcsvの形式に変換
+    const csv = Papa.unparse(rows);
+    // Blobを造り、xxxxxx.xxxxxxx..xxxxx.aaa.csvをクリック後にダウンロード
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
+    const blob = new Blob([bom, csv], { type: "text/csv;charset=utf-8;" });
+    saveAs(blob, "xxxxxx.xxxxxxx..xxxxx.aaa.csv");
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+//地図の位置の設定
+export function ChangeView({ coords }) {
+  const map = useMap();
+  map.setView(coords, 12);
+  return null;
+}
+
+export default function Map() {
+  //　東京を初期位置に
+  const [geoData, setGeoData] = useState({ lat: 35.68, lng: 139.76 });
+  const center = [geoData.lat, geoData.lng];
+
+  
+  
+  
+
+  const [value, setValue] = useState("");
+
+
+
+  //候補機能2
+ 
+  const [suggestions, setSuggestions] = useState([]);
+
+  const fetchSuggestions = async () => {
+    try {
+      const response = await axios.get(
+        "http://172.16.52.128:5000/suggestions",
+        {
+          params: {
+            search: searchText,
+            limit: itemsPerPage,
+            offset: currentPage * itemsPerPage,
+          },
+        }
+      );
+      setSuggestions(response.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSuggestions();
+  }, []);
+
+  const handleSelectSuggetion = (selectedSuggestion) => {
+    // ここで選択された提案を処理します
+    console.log("選択された提案:", selectedSuggestion);
+    setSearchText([selectedSuggestion]);
+    setSuggestions([]);
+  };
+
+  const getSuggestions = async (value) => {
+    try {
+      const response = await axios.get(
+        "http://172.16.52.128:5000/suggestions",
+        {
+          params: {
+            query: value,
+            limit: 1000,
+          },
+        }
+      );
+      const suggestions = response.data.filter((suggestion) =>
+        suggestion.oaza_town_name.includes(value)
+      );
+      setSuggestions(suggestions.slice(0, 100));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getSuggestions2 = async (value) => {
+    try {
+      const response = await axios.get(
+        "http://172.16.52.128:5000/suggestions",
+        {
+          params: {
+            query: value,
+            limit: 1000,
+          },
+        }
+      );
+      const suggestions2 = response.data.filter((suggestion) =>
+        suggestion.oaza_town_name.includes(value)
+      );
+      setSuggestions(suggestions2.slice(0, 3));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleInputChange = async (e) => {
+    const value = e.target.value;
+    setValue(value);
+    getSuggestions(value);
+    getSuggestions2(value);
+  };
+
+  useEffect(() => {
+    async function fetchData() {
+      const response = await axios.get("http://172.16.52.128:5000/api");
+      setData(response.data);
+    }
+    fetchData();
+  }, []);
+
+  const [selectedResult, setSelectedResult] = useState("");
+
+  useEffect(() => {
+    if (prefecture !== "") {
+      const filteredCities = data
+        .filter((item) => item.pref_name === prefecture)
+        .map(
+          (item) =>
+            item.city_name + (item.od_city_name ? item.od_city_name : "")
+        );
+        console.log(item, "item");
+      setCities(filteredCities);
+    } else {
+      setCities([]);
+    }
+  }, []);
+
+  
+
+  const [showLabel, setShowLabel] = useState(false);
+  const handleToggleLabel = () => {
+    setShowLabel((prevShowLabel) => !prevShowLabel);
+    setIsButtonClicked(true);
+  };
+
+  const [showLabel2, setShowLabel2] = useState(false);
+  const handleToggleLabel2 = () => {
+    setShowLabel2((prevShowLabel2) => !prevShowLabel2);
+    setIsButtonClicked(true);
+  };
+
+  //切替 画面が小さい場合
+  const [content, setContent] = useState("a");
+  const handleClick = (newContent) => {
+    setContent(newContent);
+  };
+
+  //画面が小さい場合の切替の切替
+  const [content2, setContent2] = useState("aa");
+  const handleClick2 = (newContent2) => {
+    setContent2(newContent2);
+  };
+
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const handleToggleSuggestions = () => {
+    setShowSuggestions(!showSuggestions);
+  };
+
+  const handleSelectSuggestion = (suggestion) => {
+    // 選択した候補の処理
+  };
+
+  const polygonCoords = [
+    [35.68, 139.76],
+    [35.68, 139.77],
+    [35.69, 139.77],
+    [35.69, 139.76],
+    [35.68, 139.76], // 最初の座標に戻る
+  ];
+
+  const fileInputRef = useRef(null);
+
+  const handleFileClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    // 選択されたファイルの処理を行う
+    console.log(file);
+  };
+
+  const buttonRef = useRef(null);
+
+  useEffect(() => {
+    buttonRef.current.focus();
+  }, []);
+
+  useEffect(() => {
+    async function test() {
+      try {
+        const response = await axios.get("http://172.16.52.128:5000/views");
+        const data = response.data;
+        const allFullNames = data.map((row) => row.full_name);
+        setFullNames2(allFullNames);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    test();
+  }, []);
+
+
+
+  const [data, setData] = useState([]);
+    const [prefecture, setPrefecture] = useState("");
+    const [cities, setCities] = useState([]);
+    const [city, setCity] = useState("");
+    const [fullNames, setFullNames] = useState([]);
+    const [searchText, setSearchText] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(100);
+    const [isButtonClicked, setIsButtonClicked] = useState(false);
+    const [isButtonClicked2, setIsButtonClicked2] = useState(false);
+    const [displayedFullNames, setDisplayedFullNames] = useState([]);
+    const [jukyoNum, setJukyoNum] = useState("");
+    const [chibanNum, setChibanNum] = useState("");
+    const [searchText2, setSearchText2] = useState("");
+
+    const [subcenter, setSubCenter] = useState([35.65,  139.72]);
+  
+    const uniquePrefectures = [...new Set(data.map((item) => item.pref_name))];
+  
+    useEffect(() => {
+      async function fetchData() {
+        const response = await axios.get("http://172.16.52.128:5000/api");
+        setData(response.data);
+      }
+      fetchData();
+    }, []);
+  
+    useEffect(() => {
+      if (prefecture !== "") {
+        const filteredCities = data
+          .filter((item) => item.pref_name === prefecture)
+          .map(
+            (item) =>
+              item.city_name + (item.od_city_name ? item.od_city_name : "")
+          );
+        setCities(filteredCities);
+      } else {
+        setCities([]);
+      }
+    }, [prefecture, data]);
+  
+    useEffect(() => {
+      async function fetchFullNames() {
+          if (isButtonClicked && prefecture !== "" && city !== "" && searchText !== "") {
+              const filteredData = data.filter(
+                  (item) =>
+                      item.pref_name === prefecture &&
+                      (item.city_name + (item.od_city_name ? item.od_city_name : "")) === city
+              );
+              if (filteredData.length > 0) {
+                  const lgCodePrefix = filteredData[0].lg_code.substring(0, 6);
+                  try {
+                      const response = await axios.get("http://172.16.52.128:5000/views", {
+                          params: { lgCodePrefix, searchText, jukyoNum },
+                      });
+                      const filteredFullNames = response.data.map((row) => row.full_name);
+                      setFullNames(filteredFullNames);
+                  } catch (error) {
+                      console.error(error);
+                  }
+              }
+          }
+          setIsButtonClicked(false);
+      }
+      fetchFullNames();
+  }, [isButtonClicked, prefecture, city, data, searchText, jukyoNum]);
+
+  useEffect(() => {
+    async function fetchFullNames2() {
+        if (isButtonClicked2 && prefecture !== "" && city !== "" && searchText2 !== "") {
+            const filteredData = data.filter(
+                (item) =>
+                    item.pref_name === prefecture &&
+                    (item.city_name + (item.od_city_name ? item.od_city_name : "")) === city
+            );
+            if (filteredData.length > 0) {
+                const lgCodePrefix = filteredData[0].lg_code.substring(0, 6);
+                try {
+                    const response = await axios.get("http://172.16.52.128:5000/views2", {
+                        params: { lgCodePrefix, searchText2, chibanNum },
+                    });
+                    const filteredFullNames = response.data.map((row) => row.full_name);
+                    console.log(response.data.map((row) => row.full_name));
+                    setFullNames(filteredFullNames);
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
+        setIsButtonClicked2(false);
+    }
+    fetchFullNames2();
+  }, [isButtonClicked2, prefecture, city, data, searchText2, chibanNum]);
+  
+    useEffect(() => {
+      setCurrentPage(1);
+    }, [itemsPerPage]);
+  
+    useEffect(() => {
+      if (isButtonClicked) {
+        const filteredNames = fullNames.filter((fullName) =>
+          containsSearchText(fullName, searchText)
+        );
+        setDisplayedFullNames(filteredNames);
+      } else {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = currentPage * itemsPerPage;
+        const slicedNames = fullNames.slice(startIndex, endIndex);
+        setDisplayedFullNames(slicedNames);
+      }
+    }, [fullNames, itemsPerPage, currentPage, searchText, isButtonClicked]);
+
+    useEffect(() => {
+      if (isButtonClicked2) {
+        const filteredNames = fullNames.filter((fullName) =>
+          containsSearchText(fullName, searchText2)
+        );
+        setDisplayedFullNames(filteredNames);
+      } else {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = currentPage * itemsPerPage;
+        const slicedNames = fullNames.slice(startIndex, endIndex);
+        setDisplayedFullNames(slicedNames);
+      }
+    }, [fullNames, itemsPerPage, currentPage, searchText2, isButtonClicked2]);
+  
+    const totalPages = Math.ceil(fullNames.length / itemsPerPage);
+  
+    const nextPage = () => {
+      if (currentPage < totalPages) {
+        setCurrentPage(currentPage + 1);
+      }
+    };
+  
+    const previousPage = () => {
+      if (currentPage > 1) {
+        setCurrentPage(currentPage - 1);
+      }
+    };
+  
+    const handleItemsPerPageChange = (event) => {
+      setItemsPerPage(Number(event.target.value));
+    };
+  
+    const handleButtonClick = () => {
+      setIsButtonClicked(true);
+    };
+
+    const handleButtonClick2 = () => {
+      setIsButtonClicked2(true);
+    };
+  
+    const containsSearchText = (text, search) => {
+      if (text.includes(search)) {
+        return true;
+      }
+      const kanaText = convertToKana(text);
+      const kanaSearch = convertToKana(search);
+      return kanaText.includes(kanaSearch) || text.includes(search);
+    };
+  
+    const convertToKana = (text) => {
+      // Kana変換の処理
+      return text;
+    };
+
+    const [data2, setData2] = useState([]);
+    const [zoomLevel, setZoomLevel] = useState(20); // <-- Add this
+
+    useEffect(() => {
+      axios.get('http://172.16.52.128:5000/bbb')
+        .then(response => {
+          const geojsons = response.data.map(record => {
+            const buffer = Buffer.from(record.plygn_geom1, 'hex');
+            const geometry = wkx.Geometry.parse(buffer);
+            return geometry.toGeoJSON();
+          });
+          setData2(geojsons);
+        })
+        .catch(error => console.error(error));
+    }, []);
+
+    const MapEvents = () => { // <-- Add this
+      const map = useMapEvents({
+        zoomend: () => {
+          setZoomLevel(map.getZoom());
+        },
+      });
+      return null;
+    };
+
+    //ここで全ての検索をかけるコードが途中の為コメントアウト
+    //useEffect(() => {
+    //  async function fetchFullNames2() {
+    //      if (isButtonClicked2 && prefecture !== "" && city !== "" && searchText2 !== "" && searchText3 !== "" && searchText4 !== "" && searchText5 !== ) {
+    //          const filteredData = data.filter(
+    //              (item) =>
+    //                  item.pref_name === prefecture &&
+    //                  (item.city_name + (item.od_city_name ? item.od_city_name : "")) === city
+    //          );
+    //          if (filteredData.length > 0) {
+    //              const lgCodePrefix = filteredData[0].lg_code.substring(0, 6);
+    //              try {
+    //                  const response = await axios.get("http://172.16.52.128:5000/test7", {
+    //                      params: { odouhuken, sikuchouson, machiwaza, gaikujukyo, syurui, kozo, yukamenseki, tatemonomei },
+    //                  });
+    //                  const filteredFullNames = response.data.map((row) => row.full_name);
+    //                  console.log(response.data.map((row) => row.full_name));
+    //                  setFullNames(filteredFullNames);
+    //              } catch (error) {
+    //                  console.error(error);
+    //              }
+    //          }
+    //      }
+    //      setIsButtonClicked2(false);
+    //  }
+    //  fetchFullNames2();
+    //}, [isButtonClicked2, prefecture, city, data, searchText2, chibanNum]);
+
+  return (
+    <>
+      <Head></Head>
+
+      <header className="relative border font-sans font-semibold w-[100%] py-3 max-sm:py-1.5 bg-slate-100 border-b-slate-500">
+        <ul className="flex list-none justify-between item-center">
+          <li className="w-[50%] lg:w-[350px]">
+            <div className="text-lg max-sm:text-xs bg-slate-400 text-center py-1 text-slate-100 shadow-[0_0px_3px_0px_rgb(0,0,0)] rounded-r-md">
+              <span className="text-slate-100">{"不動産ID"}</span>
+              <br />
+              <span className="text-lg max-sm:text-xs">
+                {"確認用Web"}
+              </span>
+            </div>
+          </li>
+          <li className="flex list-none mt-3 max-sm:mt-2">
+            <img
+              className="w-8 h-8 max-sm:w-5 max-sm:h-5 max-md:w-6 max-md:h-6"
+              src="logout.svg"
+            />
+            <RightHamburgerMenu />
+          </li>
+        </ul>
+      </header>
+
+      <main className="relative font-sans font-medium w-[100%]">
+        <HamburgerMenu />
+        <ul className="relative w-[100%] flex list-none bg-slate-100">
+          <li className="border-r border-slate-600 shadow-[0_0px_10px_0px_rgb(119,119,119)] text-base h-screen w-[30%] max-sm:text-xs lg:text-lg p-0 z-10">
+            <ul className="list-none flex item-center">
+              <li
+                id="button1"
+                className={`bg-slate-100 cursor-pointer border-l-0 border-t border-b-0 max-sm:border-r-0 focus-visible:outline-none border-slate-600 w-[100%] h-10 max-sm:text-[0.1px] text-sm text-center px-0 flex items-center justify-center max-md:border-b-0 ${content === 'a' ? 'bg-slate-400' : ''}`}
+                tabIndex={0}
+                onClick={() => handleClick("a")}
+                ref={buttonRef}
+              >
+                {"住居表示住所検索"}
+              </li>
+              <li
+                className={`bg-slate-100 cursor-pointer border-l-0 border-t border-b-0 border-slate-600 w-[100%] h-10 max-sm:text-[0.1px] text-sm text-center px-0 flex items-center justify-center max-md:hidden max-md:block ${content === 'b' ? 'bg-slate-400' : ''}`}
+                tabIndex={0}
+                onClick={() => handleClick("b")}
+              >
+                {"地番検索"}
+              </li>
+              <li
+                className={`bg-slate-100 cursor-pointer border-l-0 border-t border-b-0 border-slate-600 w-[100%] h-10 max-sm:text-[0.1px] text-sm text-center px-0 flex items-center justify-center max-md:hidden max-md:block ${content === 'c' ? 'bg-slate-400' : ''}`}
+                tabIndex={0}
+                onClick={() => handleClick("c")}
+              >
+                {"不動産ID検索"}
+              </li>
+            </ul>
+            <div>
+              {content === "a" && (
+                <div className="shadow-[0_0px_10px_0px_rgb(119,119,119)] border-b border-slate-600 bg-slate-400 text-base max-sm:text-xs lg:text-lg border-b border-slate-600 py-5">
+                  <ul className="list-none">
+                    <li className="relative left-[5%]">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>
+                          {"都道府県"}
+                          <span className="text-[13px] max-sm:text-[0.1px] text-red-600 px-1">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <select
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-5 max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={prefecture}
+                            onChange={(e) => setPrefecture(e.target.value)}
+                          >
+                            <option value="" />
+                            {uniquePrefectures.map((prefecture, index) => (
+                              <option key={index} value={prefecture}>
+                                {prefecture}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>
+                          {"市区町村"}
+                          <span className="text-[13px] max-sm:text-[0.1px] text-red-600 px-1">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <select
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-5 max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                          >
+                            <option value=""></option>
+                            {cities.map((city, index) => (
+                              <option key={index} value={city}>
+                                {city}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-col flex">
+                        <div>
+                          {"町字/町丁目/小字"}
+                          <span className="text-[13px] max-sm:text-[0.1px] text-red-600 px-1">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <input
+                            type="text"
+                            value={searchText}
+                            onChange={(e) => setSearchText(e.target.value)}
+                            onClick={handleToggleSuggestions}
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                          />
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-col flex">
+                        <div>{"街区・住居番号"}</div>
+                        <div>
+                          <input 
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                            type="text"
+                            value={jukyoNum}
+                            onChange={(e) => setJukyoNum(e.target.value)} 
+                          />
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-5 border-b border-black w-[85%] border-dotted">
+                      <span>{"建物検索"}</span>
+                    </li>
+                    <li className="relative left-[5%] mt-2">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"家屋番号"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-14 max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"種類"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"/>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"構造"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"床面積"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[74px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[7rem] max-sm:w-[4rem]"></input>
+                          <span className="ml-1 text-xs max-sm:text-[0.1px]">
+                            {"(㎡)"}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[11.7%] max-md:left-[5%] mt-1">
+                      <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]">
+                        <option>{"より以上"}</option>
+                        <option>{"より以下"}</option>
+                      </select>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"登記日"}</div>
+                        <div>
+                          <input
+                            type="date"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[74px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                          ></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[11.7%] max-sm:left-[5%] mt-1">
+                      <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]">
+                        <option>{"より以前"}</option>
+                        <option>{"より以後"}</option>
+                      </select>
+                    </li>
+                    <li>
+                      <li className="relative left-[5%] mt-3">
+                        <div className="flex-col flex">
+                          <div>{"建物名"}</div>
+                          <div>
+                            <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]" />
+                          </div>
+                        </div>
+                      </li>
+                    </li>
+                    <li className="relative right-[10%] mt-2 flex justify-end">
+                      <button
+                        className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                        onClick={handleButtonClick}
+                      >
+                        {"検索"}
+                      </button>
+                    </li>
+                    <li className="relative left-[5%] mt-5 border-b border-black w-[85%] border-dotted">
+                      <span>{"住居表示住所一括検索"}</span>
+                    </li>
+                    <li className="relative left-[5%] mt-3">
+                      <div className="flex-col flex">
+                        <div className="flex items-center">
+                          <label
+                            htmlFor="fileInput"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] bg-white rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                          >
+                            <input
+                              id="fileInput"
+                              type="file"
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              style={{
+                                display: "none",
+                              }}
+                              accept="image/*"
+                            />
+                            <img
+                              src="file.svg"
+                              alt="画像"
+                              className="h-7 cursor-pointer ml-auto"
+                              onClick={handleFileClick}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative right-[10%] mt-2 flex justify-end">
+                      <button
+                        className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                        onClick={handleButtonClick}
+                      >
+                        {"検索"}
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
+              {content === "b" && (
+                <div className="shadow-[0_0px_10px_0px_rgb(119,119,119)] border-b border-slate-600 bg-slate-400 py-5 text-base max-sm:text-xs lg:text-lg">
+                  <ul className="list-none">
+                    <li className="relative left-[5%]">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>
+                          {"都道府県"}
+                          <span className="text-[13px] max-sm:text-[0.1px] text-red-600 px-1">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <select
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-5 max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={prefecture}
+                            onChange={(e) => setPrefecture(e.target.value)}
+                          >
+                            <option value="" />
+                            {uniquePrefectures.map((prefecture, index) => (
+                              <option key={index} value={prefecture}>
+                                {prefecture}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>
+                          {"市区町村"}
+                          <span className="text-[13px] max-sm:text-[0.1px] text-red-600 px-1">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <select
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-5 max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                          >
+                            <option value=""></option>
+                            {cities.map((city, index) => (
+                              <option key={index} value={city}>
+                                {city}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-col flex">
+                        <div>
+                          {"町字/町丁目/小字"}
+                          <span className="text-[13px] max-sm:text-[0.1px] text-red-600 px-1">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <input
+                            type="text"
+                            placeholder=""
+                            value={searchText2}
+                            onClick={handleToggleSuggestions}
+                            onChange={(e) => setSearchText2(e.target.value)}
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                          />
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-col flex">
+                        <div>{"地番"}</div>
+                        <div>
+                          <input
+                            type="text"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                            value={chibanNum}
+                            onChange={(e) => setChibanNum(e.target.value)} 
+                          />
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-5 border-b border-black w-[85%] border-dotted">
+                      <span>
+                        <span>{"土地検索条件"}</span>
+                      </span>
+                    </li>
+                    <li className="relative left-[5%] mt-2">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"地目"}</div>
+                        <div>
+                          <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"></select>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"地積"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[7rem] max-sm:w-[4rem]"></input>
+                          <span className="ml-1 text-xs max-sm:text-[0.1px]">
+                            {"(㎡)"}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[11.7%] max-lg:ml-3 mt-1">
+                      <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]">
+                        <option>{"より以上"}</option>
+                        <option>{"より以下"}</option>
+                      </select>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"登記日"}</div>
+                        <div>
+                          <input
+                            type="date"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[74px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                          ></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[11.7%] max-lg:ml-3 mt-1">
+                      <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]">
+                        <option>{"より以前"}</option>
+                        <option>{"より以後"}</option>
+                      </select>
+                    </li>
+                    <li className="relative left-[5%] mt-5 border-b border-black w-[85%] border-dotted">
+                      <span>
+                        <span>{"建物検索条件"}</span>
+                      </span>
+                    </li>
+                    <li className="relative left-[5%] mt-2">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"家屋番号"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-14 max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"種類"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"/>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"構造"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"床面積"}</div>
+                        <div>
+                          <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[74px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[7rem] max-sm:w-[4rem]"></input>
+                          <span className="ml-1 text-xs max-sm:text-[0.1px]">
+                            {"(㎡)"}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[11.7%] max-lg:ml-3 mt-1">
+                      <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]">
+                        <option>{"より以上"}</option>
+                        <option>{"より以下"}</option>
+                      </select>
+                    </li>
+                    <li className="relative left-[5%] mt-1">
+                      <div className="flex-row flex max-lg:flex-col">
+                        <div>{"登記日"}</div>
+                        <div>
+                          <input
+                            type="date"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[74px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                          ></input>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative left-[11.7%] max-lg:ml-3 mt-1">
+                      <select className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded ml-[92px] max-lg:ml-0 focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[10rem] max-sm:w-[4.5rem]">
+                        <option>{"より前"}</option>
+                        <option>{"より後"}</option>
+                      </select>
+                    </li>
+                    <li>
+                      <li className="relative left-[5%] mt-3 w-[85%]">
+                        <div className="flex-col flex">
+                          <div className="border-b border-black border-dotted">
+                            {"建物名"}
+                          </div>
+                          <div className="py-3">
+                            <input className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[100%] max-sm:w-[4.5rem]" />
+                          </div>
+                        </div>
+                      </li>
+                    </li>
+                    <li className="relative right-[10%] mt-2 flex justify-end">
+                      <ul className="relative lg:flex">
+                        <li className="lg:flex">
+                          <button
+                            className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                            onClick={handleButtonClick2}
+                          >
+                            {"土地検索"}
+                          </button>
+                        </li>
+                        <li className="lg:flex lg:px-3">
+                          <button
+                            className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                            onClick={handleButtonClick2}
+                          >
+                            {"建物検索"}
+                          </button>
+                        </li>
+                        <li className="lg:flex">
+                          <button
+                            className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                            onClick={handleButtonClick2}
+                          >
+                            {"土地・建物検索"}
+                          </button>
+                        </li>
+                      </ul>
+                    </li>
+                    <li className="relative left-[5%] mt-5 border-b border-black w-[85%] border-dotted">
+                      <span>{"地番一括検索"}</span>
+                    </li>
+                    <li className="relative left-[5%] mt-3">
+                      <div className="flex-col flex">
+                        <div className="flex items-center">
+                          <label
+                            htmlFor="fileInput"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] bg-white rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                          >
+                            <input
+                              id="fileInput"
+                              type="file"
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              style={{
+                                display: "none",
+                              }}
+                              accept="image/*"
+                            />
+                            <img
+                              src="file.svg"
+                              alt="画像"
+                              className="h-7 cursor-pointer ml-auto"
+                              onClick={handleFileClick}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative right-[10%] mt-2 flex justify-end">
+                      <button
+                        className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                        onClick={handleButtonClick2}
+                      >
+                        {"検索"}
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
+              {content === "c" && (
+                <div className="shadow-[0_0px_10px_0px_rgb(119,119,119)] border-b border-slate-600 bg-slate-400 py-5 text-base max-sm:text-xs lg:text-lg">
+                  <ul className="list-none">
+                    <li className="relative left-[5%]">
+                      <div className="flex-col flex">
+                        <div>
+                          <span>{"不動産ID"}</span>
+                          <span className="ml-1 text-[13px] max-sm:text-[0.1px] text-red-600">
+                            {"必須"}
+                          </span>
+                        </div>
+                        <div>
+                          <ul className="flex justify-start w-[85%]">
+                            <li>
+                              <input
+                                type="text"
+                                className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[100%]"
+                              />
+                            </li>
+                            <li>
+                              <div className="bg-black ml-0 mt-3.5 max-sm:mt-2 h-[1px] w-3 max-sm:w-1" />
+                            </li>
+                            <li>
+                              <input
+                                type="text"
+                                className="shadow-[0_0px_8px_0px_rgb(60,60,60)] rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[100%]"
+                              />
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="relative right-[10%] mt-2 flex justify-end">
+                      <button
+                        className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                        onClick={handleToggleLabel2}
+                      >
+                        {"検索"}
+                      </button>
+                    </li>
+                    <li className="relative left-[5%] mt-5 border-b border-black w-[85%] border-dotted">
+                      <span>{"不動産ID一括検索"}</span>
+                    </li>
+                    <li className="relative left-[5%] mt-3">
+                      <div className="flex-col flex">
+                        <div className="flex items-center">
+                          <label
+                            htmlFor="fileInput"
+                            className="shadow-[0_0px_8px_0px_rgb(60,60,60)] bg-white rounded focus:outline-none focus:ring-4 focus:ring-[#ddb265] w-[85%] max-sm:w-[4.5rem]"
+                          >
+                            <input
+                              id="fileInput"
+                              type="file"
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              style={{
+                                display: "none",
+                              }}
+                              accept="image/*"
+                            />
+                            <img
+                              src="file.svg"
+                              alt="画像"
+                              className="h-7 cursor-pointer ml-auto"
+                              onClick={handleFileClick}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </li>
+
+                    <li className="relative right-[10%] mt-2 flex justify-end">
+                      <button
+                        className="border border-[#003ee5] shadow-[0_0px_3px_0px_rgb(0,0,0)] hover:border hover:border-[#0030b2] rounded bg-[#003ee5] hover:bg-[#0030b2] px-3 py-1 text-[#ffffff] focus:outline-none focus:ring-4 focus:ring-[#ddb265]"
+                        onClick={handleToggleLabel2}
+                      >
+                        {"検索"}
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </li>
+          <li className="relative h-screen w-[70%] bg-slate-100">
+            <ul>
+              <li>
+                <div className="absolute rounded ring-2 ring-black ring-opacity-20 right-5 mt-6 z-50 bg-[#ffffff] text-black p-1.5">
+                  <ul style={{ listStyle: "none" }}>
+                    <li>
+                      <input
+                        type="radio"
+                        id="xxx2"
+                        name="xxx2"
+                        value="xxx2"
+                        defaultChecked
+                      />
+                      <label for="建物">{"建物"}</label>
+                    </li>
+                    <li>
+                      <input type="radio" id="yyy2" name="xxx2" value="yyy2" />
+                      <label for="地番">{"土地"}</label>
+                    </li>
+                  </ul>
+                </div>
+                <div className="relative border border-slate-600 border-r-0 shadow-[0_0px_10px_0px_rgb(119,119,119)] relative p-3 bg-slate-100 z-40">
+                  <MapContainer center={maincenter} zoom={20} style={{ height: "60vh" }}>
+                    <TileLayer
+                      attribution='&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
+                      url="https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"
+                      maxZoom={20}
+                      maxNativeZoom={18}
+                    />
+                    <MapEvents /> {/* <-- Add this */}
+                    {(zoomLevel === 19 || zoomLevel === 20) && data2.map((geojson, index) => <GeoJSON key={index} data={geojson} />)}
+                  </MapContainer>
+                </div>
+              </li>
+              <li>
+                <div className="relative border border-slate-600 border-r-0 shadow-[0_0px_10px_0px_rgb(119,119,119)] relative z-40 max-sm:text-xs bg-slate-100">
+                  <ul className="flex justify-between text-center py-1">
+                    <li className="p-2">{"検索結果"}</li>
+                    <li className="p-2">
+                      <button onClick={() => downloadCsv(data)}>
+                        <img className="h-6" src="downloadIcon.svg" />
+                      </button>
+                    </li>
+                  </ul>
+                  <ul>
+                    <li className="flex justify-end">
+                    <div>
+        <button onClick={previousPage}>&lt;</button>
+        <span>{currentPage}</span>/{totalPages}
+        <button onClick={nextPage}>&gt;</button>
+      </div>
+      <select className="rounded" value={itemsPerPage} onChange={handleItemsPerPageChange}>
+        <option value={10}>10</option>
+        <option value={20}>20</option>
+        <option value={50}>50</option>
+        <option value={100}>100</option>
+      </select>
+                    </li>
+                  </ul>
+                  <ul className="max-md:w-[100%] max-md:flex max-md:list-none max-md:hidden md:block">
+                    <li className="max-md:w-[30%]">
+                      <ul className="md:w-[100%] max-md:w-[100%] md:flex list-none border-b border-black border-dotted">
+                        <li className="md:w-[5%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                          <ul>
+                            <li className="px-1 py-1 overflow-ellipsis">
+                              {"区分"}
+                            </li>
+                          </ul>
+                        </li>
+                        <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                          <ul>
+                            <li className="px-1 py-1 overflow-ellipsis">
+                              {"不動産ID"}
+                            </li>
+                          </ul>
+                        </li>
+                        <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                          <ul>
+                            <li className="px-1 py-1 overflow-ellipsis">
+                              {"地番"}
+                            </li>
+                          </ul>
+                        </li>
+                        <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                          <ul>
+                            <li className="px-1 py-1 overflow-ellipsis">
+                              {"住所"}
+                            </li>
+                          </ul>
+                        </li>
+                        <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                          <ul>
+                            <li className="px-1 py-1 overflow-ellipsis">
+                              {"座標"}
+                            </li>
+                          </ul>
+                        </li>
+                      </ul>
+                    </li>
+                  </ul>
+                  {displayedFullNames.map((fullName, index) => (
+                    <ul className="max-md:w-[100%] max-md:flex max-md:list-none">
+                      <li className="max-md:w-[30%]">
+                        <ul className="md:w-[100%] max-md:w-[100%] md:flex list-none md:hidden md:block">
+                          <li className="md:w-[5%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                {"区分"}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                {"不動産ID"}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                {"地番"}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                {"住所"}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                {"lat lon"}
+                              </li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </li>
+                      <li className="max-md:w-[70%]">
+                        <ul className="md:w-[100%] max-md:w-[100%] md:flex list-none">
+                          <li className="md:w-[5%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                <img
+                                  src="home.svg"
+                                  className="max-md:h-6 max-sm:h-4 md:h-6"
+                                />
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li className="px-1 py-1 overflow-ellipsis">
+                                {"0123456789-012"}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li
+                                className="px-1 py-1 overflow-ellipsis"
+                                key={index}
+                              >
+                                {fullName}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li
+                                className="px-1 py-1 overflow-ellipsis"
+                                key={index}
+                              >
+                                {fullName}
+                              </li>
+                            </ul>
+                          </li>
+                          <li className="md:w-[23.75%] max-md:w-[100%] whitespace-nowrap overflow-x-auto">
+                            <ul>
+                              <li 
+                                className="px-1 py-1 overflow-ellipsis cursor-pointer"
+                                onClick={() => setSubCenter([35.177369, 139.5793692])}
+                              >
+                                {"N50 E50"}
+                              </li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </li>
+                    </ul>
+                  ))}
+                </div>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </main>
+    </>
+  );
+}
